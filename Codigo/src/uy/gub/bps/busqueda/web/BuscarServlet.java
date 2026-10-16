@@ -18,6 +18,7 @@ import uy.gub.bps.busqueda.aws.api.ClienteApiAws;
 import uy.gub.bps.busqueda.aws.api.config.ApiConfiguration;
 import uy.gub.bps.busqueda.aws.api.dto.Paginado;
 import uy.gub.bps.busqueda.aws.api.dto.ResultadoBusquedaResponse;
+import uy.gub.bps.busqueda.aws.api.exception.ApiException;
 import uy.gub.bps.busqueda.aws.api.model.busqueda.BusquedaQuery;
 import uy.gub.bps.busqueda.aws.api.model.common.ApiResponse;
 import uy.gub.bps.busqueda.web.mapper.BusquedaMapper;
@@ -30,6 +31,7 @@ public class BuscarServlet extends HttpServlet {
     private static final int RESULTADOS_POR_PAGINA = 10;
     private static final int MAX_RESULTADOS = 50;
     private static final String AMBITO = "general";
+    private static final String ATTR_INICIO_RENDER_NS = "INICIO_RENDER_NS";
     private static String ENDPOINT_GATEWAY = "";
 
     private ClienteApiAws client;
@@ -54,31 +56,32 @@ public class BuscarServlet extends HttpServlet {
 				}
 			}
 		} catch (InnovaServerNotRunning e1) {
-			e1.printStackTrace();
+			log("Portal no disponible: InnovaServerNotRunning al resolver el endpoint de búsqueda", e1);
 		} catch (InnovaApplicationNotFoundException e1) {
-			e1.printStackTrace();
+			log("Configuración no disponible: InnovaApplicationNotFoundException al resolver el endpoint de búsqueda", e1);
 		} catch (TooManySessionException e1) {
-			e1.printStackTrace();
+			log("Sesiones excedidas: TooManySessionException al resolver el endpoint de búsqueda", e1);
 		}
-    	
-        String q = trim(request.getParameter("q"));        
+
+        String q = trim(request.getParameter("q"));
 //        System.out.println("[BuscarServlet] q recibido=[" + q + "]");
 //        for (int i = 0; i < q.length(); i++) {
 //            System.out.println("  char[" + i + "]=" + q.charAt(i) + " codigo=" + (int) q.charAt(i));
 //        }
-        
+
         String tipo = trim(request.getParameter("tipo"));
         int paginaSolicitada = parsePagina(request.getParameter("pagina"));
-        
-        System.out.println("\n[BuscarServlet] === PETICIÓN === q=[" + q 
-                + "] tipo=[" + tipo 
-                + "] paginaSolicitada=" + paginaSolicitada);        
-        
+
+        System.out.println("\n[BuscarServlet] === PETICIÓN === q=[" + q
+                + "] tipo=[" + tipo
+                + "] paginaSolicitada=" + paginaSolicitada);
+
         request.setAttribute("q", q);
         request.setAttribute("tipo", tipo);
 
         if (q.isEmpty()) {
             request.setAttribute("pagina", Integer.valueOf(1));
+            request.setAttribute(ATTR_INICIO_RENDER_NS, Long.valueOf(System.nanoTime()));
             forward(request, response);
             return;
         }
@@ -109,7 +112,7 @@ public class BuscarServlet extends HttpServlet {
                     cacheCursores.remove(contextoBusqueda + "|1");
                 }
             }
-            
+
             BusquedaQuery query = new BusquedaQuery(q, AMBITO)
                     .porPagina(Integer.valueOf(RESULTADOS_POR_PAGINA))
                     .maxResultados(Integer.valueOf(MAX_RESULTADOS));
@@ -120,8 +123,7 @@ public class BuscarServlet extends HttpServlet {
                     + " \ncacheKey=" + cacheKey
                     + " \ncursorLeidoDeSesion=" + cursor
                     + " \nclavesEnSesion=" + cacheCursores.keySet());
-            
-            
+
             if (pagina == 1) {
                 query.pagina(Integer.valueOf(1));
             } else {
@@ -134,31 +136,47 @@ public class BuscarServlet extends HttpServlet {
                 query.tipo(tipo);
             }
 
-            query.verbose(false);            
+            query.verbose(false);
+
+            long inicioAwsNs = System.nanoTime();
             ApiResponse apiResponse = client.busqueda().buscar(query);
+            long duracionAwsMs = (System.nanoTime() - inicioAwsNs) / 1000000L;
+            log("[medicion] tiempo_respuesta_aws_ms=" + duracionAwsMs
+                    + " q=[" + q + "] tipo=[" + tipo + "] pagina=" + pagina);
+
             ResultadoBusquedaResponse resultado = BusquedaMapper.parse(apiResponse.getBody());
-            
+
             //System.out.println("[BuscarServlet] BODY CRUDO DE AWS:");
             System.out.println(apiResponse.getBody());
-            
+
             System.out.println("[BuscarServlet] RESPUESTA AWS:"
-                    + " cursorDevuelto=" + (resultado.getPaginado() == null ? "null" 
+                    + " cursorDevuelto=" + (resultado.getPaginado() == null ? "null"
                                             : resultado.getPaginado().getCursor())
-                    + " paginaDevuelta=" + (resultado.getPaginado() == null ? "null" 
+                    + " paginaDevuelta=" + (resultado.getPaginado() == null ? "null"
                                             : resultado.getPaginado().getPagina())
-                    + " totalPaginas=" + (resultado.getPaginado() == null ? "null" 
+                    + " totalPaginas=" + (resultado.getPaginado() == null ? "null"
                                           : resultado.getPaginado().getTotalPaginas()));
 
             request.setAttribute("resultado", resultado);
             request.setAttribute("pagina", Integer.valueOf(pagina));
             guardarCursorSiguiente(cacheCursores, contextoBusqueda, pagina, resultado);
 
+        } catch (ApiException e) {
+            // Error de integración con el servicio de búsqueda (HTTP >= 400 o fallo de red).
+            // No se expone detalle técnico al usuario; queda registrado para diagnóstico.
+            request.setAttribute("errorBusqueda", Boolean.TRUE);
+            request.setAttribute("pagina", Integer.valueOf(paginaSolicitada));
+            log("[BuscarServlet] Error de integración con el servicio de búsqueda"
+                    + " (HTTP " + e.getStatusCode() + ")"
+                    + " q=[" + q + "] tipo=[" + tipo + "] pagina=" + paginaSolicitada, e);
         } catch (Exception e) {
             request.setAttribute("errorBusqueda", Boolean.TRUE);
             request.setAttribute("pagina", Integer.valueOf(paginaSolicitada));
-            log("Error al ejecutar la búsqueda", e);
+            log("[BuscarServlet] Error inesperado al ejecutar la búsqueda"
+                    + " q=[" + q + "] tipo=[" + tipo + "] pagina=" + paginaSolicitada, e);
         }
 
+        request.setAttribute(ATTR_INICIO_RENDER_NS, Long.valueOf(System.nanoTime()));
         forward(request, response);
     }
 

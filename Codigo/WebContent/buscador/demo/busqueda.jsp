@@ -245,9 +245,22 @@
             <% } %>
         <% } else if (q.isEmpty()) { %>
             <p>Realice una búsqueda para ver los filtros.</p>
-        <% } %>
+                <% } %>
         <a href="/bps/buscador/demo/busqueda.jsp">reiniciar</a>
     </aside>
 </div>
+
+<%
+    // Medición del tiempo de render de la vista.
+    // El servlet registra INICIO_RENDER_NS justo antes del forward; aquí se
+    // calcula el tiempo transcurrido hasta el final del render de la JSP.
+    Object inicioRenderNsObj = request.getAttribute("INICIO_RENDER_NS");
+    if (inicioRenderNsObj instanceof Long) {
+        long duracionRenderMs = (System.nanoTime() - ((Long) inicioRenderNsObj).longValue()) / 1000000L;
+        pageContext.getServletContext().log(
+                "[medicion] tiempo_render_resultado_ms=" + duracionRenderMs
+                + " q=[" + q + "] tipo=[" + tipo + "] pagina=" + pagina);
+    }
+%>
 
 <%@ include file="pie.jspf" %>
