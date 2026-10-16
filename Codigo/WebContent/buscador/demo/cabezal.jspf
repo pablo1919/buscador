@@ -1,0 +1,201 @@
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscador de Contenidos</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; }
+        em { font-weight: bold; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; display: flex; gap: 20px; }
+        .header { background: #0056b3; color: white; padding: 5px; text-align: center; }
+        .search-form { margin-bottom: 20px; }
+        .search-form label { display: block; margin-bottom: 6px; font-weight: bold; }
+        .search-form input[type="text"] { width: 70%; padding: 10px; font-size: 16px; }
+        .search-form button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        .estado-loading { margin-top: 8px; }
+        .estado-error { border-left: 4px solid #b00020; }
+        .estado-empty { border-left: 4px solid #666; }
+        .estado-idle { border-left: 4px solid #0056b3; }
+
+		.results-area {
+		    position: relative;
+		}
+		
+		.estado-loading-overlay {
+		    position: fixed;
+		    top: 90px; /* Altura del formulario; ajustar según el diseño */
+		    left: 0;
+		    right: 0;
+		    bottom: 0;
+		    z-index: 10000;		
+		    display: flex;
+		    align-items: center;
+		    justify-content: center;		
+		    background: rgba(255, 255, 255, 0.82);
+		    cursor: wait;
+		}
+		
+		.estado-loading-overlay[hidden] {
+		    display: none !important;
+		}
+		
+		.spinner {
+		    width: 42px;
+		    height: 42px;
+		    border: 5px solid #ddd;
+		    border-top-color: #1769aa;
+		    border-radius: 50%;
+		    animation: giro-spinner 0.8s linear infinite;
+		}
+		
+		@keyframes giro-spinner {
+		    to {
+		        transform: rotate(360deg);
+		    }
+		}
+		
+		@media (prefers-reduced-motion: reduce) {
+		    .spinner {
+		        animation-duration: 2s;
+		    }
+		}
+
+        /* Filtros a la izquierda y resultados a la derecha. */
+        .results-area { flex: 3; order: 2; }
+        .sidebar { flex: 1; background: white; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: fit-content; order: 1; }
+
+        .result-item { background: white; padding: 15px; margin-bottom: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .result-title { font-size: 18px; color: #0056b3; margin: 0 0 5px 0; }
+        .result-meta { font-size: 12px; color: #666; margin-bottom: 10px; }
+        .result-snippet a { color: #333; text-decoration: none; font-style: italic; }
+        .result-snippet a:hover { text-decoration: underline; }
+        .filtro-item { display: block; width: 100%; text-align: left; margin-bottom: 10px; padding: 8px; color: #333; background: transparent; border: 0; cursor: pointer; }
+        .filtro-item:hover, .filtro-item.active { font-weight: bold; color: #0056b3; }
+        .pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 20px; }
+        .pagination button { padding: 10px 15px; cursor: pointer; }
+        .pagination button:disabled, .filtro-item:disabled { cursor: default; opacity: 0.5; }
+        .resumen-ia { background: #eef7ff; padding: 10px; border-left: 4px solid #0056b3; margin: 10px 0; font-size: 13px; }
+        .fecha-actualizacion { font-size: 13px; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    </style>
+    <script>
+    (function () {
+        function inicializarCargaBuscador() {
+            var form = document.getElementById("formBusqueda");
+            var estadoCarga = document.getElementById("estadoCarga");
+            var input = document.getElementById("qInput");
+            var boton = document.getElementById("btnBuscar");
+
+            if (!form || !estadoCarga || !input || !boton) {
+                return;
+            }
+
+            function finalizarCarga() {
+                estadoCarga.hidden = true;
+                input.disabled = false;
+                boton.disabled = false;
+            }
+
+            form.addEventListener("submit", function () {
+                if (!form.checkValidity()) {
+                    return;
+                }
+
+                estadoCarga.hidden = false;
+                input.readOnly = true;
+                boton.disabled = true;
+            });
+
+            window.addEventListener("pageshow", finalizarCarga);
+        }
+
+        if (document.readyState === "loading") {
+            document.addEventListener(
+                "DOMContentLoaded",
+                inicializarCargaBuscador
+            );
+        } else {
+            inicializarCargaBuscador();
+        }
+    })();
+    
+        (function () {
+            function formBusqueda() {
+                return document.getElementById('formBusqueda');
+            }
+
+            function setLoading() {
+                var form = formBusqueda();
+                var estado = document.getElementById('estadoCarga');
+                if (form) {
+                    form.setAttribute('aria-busy', 'true');
+                }
+                if (estado) {
+                    estado.hidden = false;
+                }
+            }
+
+            function navegar(numPagina) {
+                var inputPagina = document.getElementById('paginaInput');
+                var form = formBusqueda();
+                if (!inputPagina || !form) {
+                    return;
+                }
+
+                inputPagina.value = numPagina;
+                setLoading();
+                form.submit();
+            }
+
+            function aplicarFiltro(codigoTipo) {
+                var inputTipo = document.getElementById('tipoInput');
+                var inputPagina = document.getElementById('paginaInput');
+                var form = formBusqueda();
+                if (!inputTipo || !inputPagina || !form) {
+                    return;
+                }
+
+                inputTipo.value = codigoTipo || '';
+                inputPagina.value = '1';
+                setLoading();
+                form.submit();
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                var form = formBusqueda();
+                if (form) {
+                	form.addEventListener("submit", function () {
+                	    if (typeof form.checkValidity === "function"
+                	            && !form.checkValidity()) {
+                	        return;
+                	    }
+                	    estadoCarga.hidden = false;
+                	    window.scrollTo({
+                	        top: 0,
+                	        behavior: "auto"
+                	    });
+                	});
+                }
+
+                var controlesPagina = document.querySelectorAll('.pagina-control');
+                for (var i = 0; i < controlesPagina.length; i++) {
+                    controlesPagina[i].addEventListener('click', function () {
+                        navegar(parseInt(this.getAttribute('data-pagina'), 10));
+                    });
+                }
+
+                var filtros = document.querySelectorAll('.filtro-item');
+                for (var j = 0; j < filtros.length; j++) {
+                    filtros[j].addEventListener('click', function () {
+                        aplicarFiltro(this.getAttribute('data-tipo'));
+                    });
+                }
+            });
+        })();
+    </script>
+</head>
+<body>
+    <div class="header">
+        <h1>Buscador Institucional</h1>
+    </div>
