@@ -1,0 +1,300 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "API de busqueda",
+        "version": "1.0.0",
+        "description": "Busquedas publicas del sitio: GET /api/v1/buscar y GET /api/v1/predictiva. Endpoints funcionales bajo /api/v1; /salud y /openapi.json en la raiz. Los errores son JSON: {detail}."
+    },
+    "servers": [
+        {
+            "url": "/",
+            "description": ""
+        }
+    ],
+    "tags": [
+        {
+            "name": "Busqueda",
+            "description": "Busquedas publicas del sitio."
+        },
+        {
+            "name": "Sistema",
+            "description": "Salud y definicion de la API."
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "FirmaHMAC": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Signature",
+                "description": "Firma HMAC requerida en los endpoints protegidos.\n\n    X-Signature: t=<unix>, k=<id_clave>, v1=<hex>\n    v1 = HMAC-SHA(*)\n\n- t: epoch en segundos, valido +-300 s.\n- k: id de la clave usada.\n- En requests sin cuerpo se firma el cuerpo vacio.\n- Firma invalida o ausente: 401."
+            }
+        }
+    },
+    "paths": {
+        "/salud": {
+            "get": {
+                "tags": [
+                    "Sistema"
+                ],
+                "summary": "Estado de la API y sus dependencias",
+                "description": "200 si las dependencias responden; 503 si alguna falta.",
+                "responses": {
+                    "200": {
+                        "description": "Servicio operativo",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "estado": "ok",
+                                    "opensearch": true,
+                                    "ollama": true,
+                                    "dynamodb": true
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Alguna dependencia caida",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "estado": "degradado",
+                                    "opensearch": false,
+                                    "ollama": true,
+                                    "dynamodb": true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/openapi.json": {
+            "get": {
+                "tags": [
+                    "Sistema"
+                ],
+                "summary": "Esta definicion OpenAPI",
+                "description": "Definicion OpenAPI de esta API. Requiere firma.",
+                "security": [
+                    {
+                        "FirmaHMAC": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Documento OpenAPI 3.0"
+                    },
+                    "401": {
+                        "description": "Firma HMAC invalida o ausente",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "detail": "firma invalida: falta firmar el request"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/predictiva": {
+            "get": {
+                "tags": [
+                    "Busqueda"
+                ],
+                "summary": "Busqueda predictiva (as-you-type)",
+                "description": "Sugerencias a medida que se escribe, sobre titulo y tags.",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "Prefijo de la consulta",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true,
+                        "example": "jubila"
+                    },
+                    {
+                        "name": "ambito",
+                        "in": "query",
+                        "description": "Filtra por seccion del sitio (activos, pasivos, empresas…)",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "pasivos"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sugerencias ordenadas por score",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "consulta": "jubila",
+                                    "resultados": [
+                                        {
+                                            "id": "11306",
+                                            "titulo": "Solicitud de jubilación",
+                                            "url": "https://www.bps.gub.uy/11306/solicitud-de-jubilacion.html",
+                                            "tags": [
+                                                "jubilacion",
+                                                "pasividad"
+                                            ],
+                                            "tipo": "tramite",
+                                            "formato": "html",
+                                            "descripcion": "Asesoramiento integral para iniciar la jubilación.",
+                                            "ambito": [
+                                                "pasivos"
+                                            ],
+                                            "ultima_modificacion": "2026-05-12T10:00:00-03:00",
+                                            "score": 0.9182
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Falta q",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "detail": "falta el parametro q"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/buscar": {
+            "get": {
+                "tags": [
+                    "Busqueda"
+                ],
+                "summary": "Busqueda del sitio",
+                "description": "Busqueda principal del sitio. Requiere query (texto libre) y searchScope (general, tramite o serviciosenlinea). Devuelve resultados ordenados y un nodo paginado con facetas por tipo y un cursor para paginar. verbose=1 agrega trazabilidad al resultado.",
+                "parameters": [
+                    {
+                        "name": "query",
+                        "in": "query",
+                        "description": "Texto libre del usuario",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true,
+                        "example": "seguro de paro"
+                    },
+                    {
+                        "name": "searchScope",
+                        "in": "query",
+                        "description": "general | tramite | serviciosenlinea",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true,
+                        "example": "general"
+                    },
+                    {
+                        "name": "pagina",
+                        "in": "query",
+                        "description": "Pagina 1-based (default 1)",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": "1"
+                    },
+                    {
+                        "name": "por_pagina",
+                        "in": "query",
+                        "description": "Resultados por pagina (default 10, tope 50)",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "max_resultados",
+                        "in": "query",
+                        "description": "Ventana total a considerar/paginar (default 50, tope 200)",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "tipo",
+                        "in": "query",
+                        "description": "Filtra por tipo(s) de contenido, separados por coma.",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "noticia,tramite"
+                    },
+                    {
+                        "name": "cursor",
+                        "in": "query",
+                        "description": "Cursor de paginado; reenviarlo para mantener la misma vista entre paginas.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "verbose",
+                        "in": "query",
+                        "description": "1/true: agrega trazabilidad al resultado.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resultados ordenados + nodo paginado",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "resultados": [
+                                        {
+                                            "id": "3498",
+                                            "tipo": "htmlfragmenter",
+                                            "titulo": "Jubilaciones",
+                                            "url": "https://www.bps.gub.uy/3498/jubilaciones.html",
+                                            "resumen": "Información general sobre la jubilación como prestación contributiva…",
+                                            "fechaActualizacion": null,
+                                            "fragmento": "La <em>jubilación</em> común es la prestación económica que…"
+                                        }
+                                    ],
+                                    "paginado": {
+                                        "pagina": 1,
+                                        "por_pagina": 10,
+                                        "total": 37,
+                                        "total_paginas": 4,
+                                        "max_resultados": 50,
+                                        "por_tipo": {
+                                            "tramite": 12,
+                                            "htmlfragmenter": 9,
+                                            "noticia": 5,
+                                            "download": 11
+                                        },
+                                        "cursor": "3f9c2a7d41e88b06c5d1a2f30e97b4aa"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Parametros invalidos",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "detail": "searchScope invalido (general | tramite | serviciosenlinea)"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
