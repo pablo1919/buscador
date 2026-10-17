@@ -78,6 +78,8 @@
     Integer paginaAttr = (Integer) request.getAttribute("pagina");
     ResultadoBusquedaResponse responseObj = (ResultadoBusquedaResponse) request.getAttribute("resultado");
     Boolean errorBusqueda = (Boolean) request.getAttribute("errorBusqueda");
+    Boolean errorServicioNoDisponible = (Boolean) request.getAttribute("errorServicioNoDisponible");
+    String codigoIncidencia = (String) request.getAttribute("codigoIncidencia");
     q = q == null ? "" : q;
     tipo = tipo == null ? "" : tipo;
     int pagina = paginaAttr == null ? 1 : paginaAttr.intValue();
@@ -111,7 +113,18 @@
 
         <% if (errorBusqueda != null && errorBusqueda.booleanValue()) { %>
             <div class="result-item estado estado-error" role="alert">
-                <p>Ocurrió un error al buscar, por favor intente más tarde.</p>
+                <% boolean servicioNoDisponible = errorServicioNoDisponible != null
+                        && errorServicioNoDisponible.booleanValue(); %>
+                <% if (servicioNoDisponible) { %>
+                    <p>El servicio de búsqueda no está disponible en este momento. Por favor, intente nuevamente en unos minutos.</p>
+                <% } else { %>
+                    <p>Ocurrió un error al buscar, por favor intente más tarde.</p>
+                <% } %>
+                <% if (codigoIncidencia != null && !codigoIncidencia.isEmpty()) { %>
+                    <p class="codigo-incidencia">
+                        Si el problema persiste, mencione este código de referencia: <strong><%= htmlEscape(codigoIncidencia) %></strong>.
+                    </p>
+                <% } %>
             </div>
         <% } else if (q.isEmpty()) { %>
             <div class="result-item estado estado-idle">
@@ -245,7 +258,7 @@
             <% } %>
         <% } else if (q.isEmpty()) { %>
             <p>Realice una búsqueda para ver los filtros.</p>
-                <% } %>
+        <% } %>
         <a href="/bps/buscador/demo/busqueda.jsp">reiniciar</a>
     </aside>
 </div>
