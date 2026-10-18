@@ -85,21 +85,6 @@
 
 <div class="container">
     <main class="results-area" aria-labelledby="tituloResultados">
-		<div class="search-form">
-		    <form id="formBusqueda" action="<%= request.getContextPath() %>/buscar" method="GET">
-		        <label for="qInput">Buscar contenidos</label>
-		        <input type="text"
-		               name="q"
-		               id="qInput"
-		               value="<%= htmlEscape(q) %>"
-		               placeholder="Ingrese sus términos de búsqueda..."
-		               required />
-		        <input type="hidden" name="tipo" id="tipoInput" value="<%= htmlEscape(tipo) %>" />
-		        <input type="hidden" name="pagina" id="paginaInput" value="<%= pagina %>" />
-		        <button type="submit" id="btnBuscar">Buscar</button>
-		    </form>
-		</div>
-		
 		<div id="estadoCarga"
 		     class="estado-loading-overlay"
 		     role="status"

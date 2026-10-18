@@ -1,18 +1,80 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%!
+    /**
+     * Escape de atributos para el buscador del cabezal.
+     *
+     * <p>Se declara con un nombre propio (y no como htmlEscape) porque este
+     * .jspf se incluye de forma estatica: si la pagina que lo incluye ya
+     * declara htmlEscape, dos metodos con la misma firma romperian la
+     * traduccion de la JSP.</p>
+     */
+    private String htmlEscapeCabezal(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        StringBuilder escaped = new StringBuilder(value.length() + 16);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '&': escaped.append("&amp;"); break;
+                case '<': escaped.append("&lt;"); break;
+                case '>': escaped.append("&gt;"); break;
+                case '"': escaped.append("&quot;"); break;
+                case '\'': escaped.append("&#39;"); break;
+                default: escaped.append(c);
+            }
+        }
+        return escaped.toString();
+    }
+%>
+<%
+    // Valores del buscador del cabezal. Se resuelven aqui (y no se toman de
+    // variables de la pagina que incluye) porque el include es estatico y
+    // ocurre antes que los scriptlets de busqueda.jsp. Se leen los mismos
+    // atributos que publica el servlet, con los mismos valores por defecto.
+    String qCabezal = (String) request.getAttribute("q");
+    String tipoCabezal = (String) request.getAttribute("tipo");
+    Integer paginaCabezalAttr = (Integer) request.getAttribute("pagina");
+    qCabezal = qCabezal == null ? "" : qCabezal;
+    tipoCabezal = tipoCabezal == null ? "" : tipoCabezal;
+    int paginaCabezal = paginaCabezalAttr == null ? 1 : paginaCabezalAttr.intValue();
+%>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Buscador de Contenidos</title>
+    <title>Sitio web demo</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; }
         em { font-weight: bold; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; display: flex; gap: 20px; }
-        .header { background: #0056b3; color: white; padding: 5px; text-align: center; }
+        .header { background: #0056b3; color: white; padding: 10px 15px; text-align: center; }
+        .header-titulo { margin: 0 0 4px 0; font-size: 20px; }
+        .header nav { font-size: 13px; opacity: 0.9; margin-bottom: 10px; }
         .search-form { margin-bottom: 20px; }
         .search-form label { display: block; margin-bottom: 6px; font-weight: bold; }
-        .search-form input[type="text"] { width: 70%; padding: 10px; font-size: 16px; }
+        .search-form input[type="text"],
+        .search-form input[type="search"] { width: 70%; padding: 10px; font-size: 16px; }
         .search-form button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+
+        /* Buscador ubicado en el cabezal. */
+        .header .search-form {
+            max-width: 720px;
+            margin: 0 auto 5px auto;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        .header .search-form label { flex: 1 0 100%; margin: 0 0 4px 0; text-align: left; }
+        .header .search-form input[type="search"] {
+            flex: 1 1 260px;
+            width: auto;
+            border: 0;
+            border-radius: 3px;
+        }
+        .header .search-form button { border: 0; border-radius: 3px; }
         .estado-loading { margin-top: 8px; }
         .estado-error { border-left: 4px solid #b00020; }
         .estado-empty { border-left: 4px solid #666; }
@@ -24,7 +86,9 @@
 		
 		.estado-loading-overlay {
 		    position: fixed;
-		    top: 90px; /* Altura del formulario; ajustar según el diseño */
+		    /* El buscador ahora vive en el cabezal; el overlay cubre la
+		       ventana completa en lugar de reservar una franja superior. */
+		    top: 0;
 		    left: 0;
 		    right: 0;
 		    bottom: 0;
@@ -170,7 +234,12 @@
                 	            && !form.checkValidity()) {
                 	        return;
                 	    }
-                	    estadoCarga.hidden = false;
+                	    // estadoCarga puede no existir (p. ej. inicio.jsp tambien
+                	    // incluye el cabezal y no tiene el overlay de resultados).
+                	    var estado = document.getElementById('estadoCarga');
+                	    if (estado) {
+                	        estado.hidden = false;
+                	    }
                 	    window.scrollTo({
                 	        top: 0,
                 	        behavior: "auto"
@@ -196,6 +265,35 @@
     </script>
 </head>
 <body>
-    <div class="header">
-        <h1>Buscador Institucional</h1>
-    </div>
+    <header class="header">
+        <p class="header-titulo">Nombre del sitio</p>
+        <nav aria-label="Menú de navegación principal">
+            Menú de navegación principal (Inicio, Acerca de, Contacto)
+        </nav>
+
+        <search>
+            <form id="formBusqueda"
+                  class="search-form"
+                  action="<%= request.getContextPath() %>/buscar"
+                  method="GET"
+                  role="search"
+                  autocomplete="off">
+                <label for="qInput">Buscar contenidos</label>
+                <input type="search"
+                       name="q"
+                       id="qInput"
+                       value="<%= htmlEscapeCabezal(qCabezal) %>"
+                       placeholder="Ingrese sus términos de búsqueda..."
+                       aria-label="Buscar contenidos"
+                       aria-describedby="sugerenciasInfo"
+                       autocomplete="off"
+                       required />
+                <input type="hidden" name="tipo" id="tipoInput" value="<%= htmlEscapeCabezal(tipoCabezal) %>" />
+                <input type="hidden" name="pagina" id="paginaInput" value="<%= paginaCabezal %>" />
+                <button type="submit" id="btnBuscar">Buscar</button>
+                <p id="sugerenciasInfo" class="visually-hidden">
+                    Empiece a escribir para ver sugerencias de búsqueda.
+                </p>
+            </form>
+        </search>
+    </header>
